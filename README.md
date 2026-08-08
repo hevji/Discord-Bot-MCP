@@ -3,6 +3,7 @@
 Manage a Discord server directly from your AI coding assistant. Create channels, categories, roles, set permissions, assign roles, and more — all through natural language.
 
 > static triage: https://tria.ge/submit/260808-tb4p3azekb
+
 > virustotal: https://www.virustotal.com/gui/file/56fafed35e2734debed600e585741c53f456148da257065e9ea8c9fcb62c798d
 
 ## Tools
