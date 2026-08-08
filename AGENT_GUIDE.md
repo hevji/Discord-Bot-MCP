@@ -57,4 +57,4 @@ When setting up read-only channels (like `#rules`, `#announcements`), pass `send
 - The bot auto-selects the **first guild** it's in. If it's in multiple servers, only the first one is manageable.
 - Managed roles (created by bot integrations like RaidProtect, Ticket Tool, etc.) cannot be deleted through the API.
 - Roles above the bot's highest role in the hierarchy cannot be deleted or edited.
-- Member lookup uses `fetch_members()` with a limit of 100 — works for most servers.
+- Member lookup uses `fetch_members()` with a limit of 100 - works for most servers.
