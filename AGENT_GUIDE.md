@@ -24,17 +24,23 @@ Check whether the MCP server is connected:
 
 | Tool | When to use |
 |---|---|
-| `create_category` | Create a category channel (e.g. "INFORMATION", "COMMUNITY") |
-| `create_channel` | Create a text/voice channel under a parent category |
-| `create_role` | Create a new role (supports `color`, `hoist`, `mentionable`) |
-| `edit_role` | Change a role's name, color, or hoist status |
-| `delete_role` | Remove a role (fails if managed, @everyone, or above the bot) |
-| `assign_role` | Give a role to a member by username |
-| `remove_role` | Take a role from a member by username |
-| `restrict_channel` | Set channel-level permissions — allow/deny roles, toggle read-only with `send_messages` |
-| `create_role_restricted_channel` | Create a text channel and apply role restrictions in one call |
-| `delete_category` | Remove a category (cascade-deletes child channels) |
-| `delete_channel` | Remove a single text/voice channel |
+| `create_category` | Create a new category channel |
+| `create_channel` | Create a text or voice channel under a category |
+| `create_role` | Create a new role with color, hoist, mentionable |
+| `edit_role` | Edit a role's name, color, hoist, or mentionable |
+| `delete_role` | Delete a role (non-managed, below bot's hierarchy) |
+| `assign_role` | Assign a role to a member by username |
+| `remove_role` | Remove a role from a member by username |
+| `restrict_channel` | Set channel permissions (allow/deny roles, read-only mode, thread control) |
+| `create_role_restricted_channel` | Create a channel + restrict it in one call |
+| `rename_channel` | Rename a text or voice channel |
+| `delete_category` | Delete a category channel |
+| `delete_channel` | Delete a text or voice channel |
+| `list_channels` | List all channels with their names, types, and categories |
+| `list_roles` | List all roles with their names, colors, and member counts |
+| `create_webhook` | Create a webhook in a text channel |
+| `send_webhook_message` | Send a message through an existing webhook |
+| `set_slowmode` | Set the slowmode delay (seconds) on a text channel |
 
 ## Permission model patterns
 
