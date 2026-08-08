@@ -1,16 +1,9 @@
-"""
-Discord Bot MCP Server
-
-Provides MCP tools to manage a Discord server:
-- Create categories, channels (text/voice), roles
-- Restrict channel access to specific roles via permission overwrites
-"""
-
 import os
 import asyncio
 import logging
 from typing import Optional
 
+import aiohttp
 import discord
 from discord import Intents, PermissionOverwrite, ChannelType
 from discord.ext import commands
@@ -31,6 +24,8 @@ DISCORD_TOKEN = os.environ.get("DISCORD_TOKEN")
 if not DISCORD_TOKEN:
     raise ValueError("DISCORD_TOKEN environment variable is required")
 
+DISCORD_GUILD_NAME = os.environ.get("DISCORD_GUILD_NAME", "Monolith")
+
 intents = Intents.default()
 intents.guilds = True
 intents.members = True
@@ -47,12 +42,15 @@ bot_ready = asyncio.Event()
 async def on_ready():
     global guild
     logger.info(f"Logged in as {bot.user} (ID: {bot.user.id})")
-    if bot.guilds:
-        guild = bot.guilds[0]
+    guild = discord.utils.get(bot.guilds, name=DISCORD_GUILD_NAME)
+    if guild:
         logger.info(f"Connected to guild: {guild.name} (ID: {guild.id})")
         bot_ready.set()
     else:
-        logger.warning("Bot is not in any guild. Invite it to a server first.")
+        logger.warning(
+            f"Guild '{DISCORD_GUILD_NAME}' not found. "
+            f"Bot is in: {[g.name for g in bot.guilds]}"
+        )
 
 
 @mcp_server.list_tools()
@@ -153,9 +151,17 @@ async def handle_list_tools() -> list[types.Tool]:
                         "type": "boolean",
                         "description": "Deny @everyone access (default: true)",
                     },
+                    "everyone_read_only": {
+                        "type": "boolean",
+                        "description": "Set @everyone to read-only (can view, cannot send). Ignored if deny_everyone is true.",
+                    },
                     "send_messages": {
                         "type": "boolean",
                         "description": "Allow allowed roles to send messages (default: true). Set false for read-only channels.",
+                    },
+                    "allow_threads": {
+                        "type": "boolean",
+                        "description": "Allow allowed roles to create threads (default: true). Members (@everyone) never get thread access in restricted channels.",
                     },
                 },
                 "required": ["channel_name", "allowed_role_names"],
@@ -195,6 +201,24 @@ async def handle_list_tools() -> list[types.Tool]:
                     },
                 },
                 "required": ["name", "category_name"],
+            },
+        ),
+        types.Tool(
+            name="rename_channel",
+            description="Rename a text or voice channel",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Current name of the channel",
+                    },
+                    "new_name": {
+                        "type": "string",
+                        "description": "New name for the channel",
+                    },
+                },
+                "required": ["name", "new_name"],
             },
         ),
         types.Tool(
@@ -305,6 +329,90 @@ async def handle_list_tools() -> list[types.Tool]:
                 "required": ["name"],
             },
         ),
+        types.Tool(
+            name="list_channels",
+            description="List all channels in the Discord server with their names, types, and categories",
+            inputSchema={
+                "type": "object",
+                "properties": {},
+            },
+        ),
+        types.Tool(
+            name="list_roles",
+            description="List all roles in the Discord server with their names, colors, and member counts",
+            inputSchema={
+                "type": "object",
+                "properties": {},
+            },
+        ),
+        types.Tool(
+            name="create_webhook",
+            description="Create a webhook in a text channel",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "channel_name": {
+                        "type": "string",
+                        "description": "Name of the text channel to create the webhook in",
+                    },
+                    "name": {
+                        "type": "string",
+                        "description": "Name of the webhook (defaults to channel name)",
+                    },
+                },
+                "required": ["channel_name"],
+            },
+        ),
+        types.Tool(
+            name="send_webhook_message",
+            description="Send a message through an existing webhook",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "webhook_url": {
+                        "type": "string",
+                        "description": "The webhook URL to send through",
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "Message content to send",
+                    },
+                },
+                "required": ["webhook_url", "content"],
+            },
+        ),
+        types.Tool(
+            name="set_slowmode",
+            description="Set the slowmode (cooldown between messages) on a text channel in seconds",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "channel_name": {
+                        "type": "string",
+                        "description": "Name of the text channel to set slowmode on",
+                    },
+                    "seconds": {
+                        "type": "integer",
+                        "description": "Slowmode delay in seconds (max 21600 = 6 hours, 0 to disable)",
+                    },
+                },
+                "required": ["channel_name", "seconds"],
+            },
+        ),
+        types.Tool(
+            name="set_system_channel",
+            description="Set the server's system channel where welcome messages and boosts are posted",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "channel_name": {
+                        "type": "string",
+                        "description": "Name of the text channel to receive system messages",
+                    },
+                },
+                "required": ["channel_name"],
+            },
+        ),
     ]
 
 
@@ -339,12 +447,26 @@ async def handle_call_tool(
             return await _remove_role(g, args)
         elif name == "edit_role":
             return await _edit_role(g, args)
+        elif name == "rename_channel":
+            return await _rename_channel(g, args)
         elif name == "delete_category":
             return await _delete_category(g, args)
         elif name == "delete_channel":
             return await _delete_channel(g, args)
         elif name == "delete_role":
             return await _delete_role(g, args)
+        elif name == "list_channels":
+            return await _list_channels(g, args)
+        elif name == "list_roles":
+            return await _list_roles(g, args)
+        elif name == "create_webhook":
+            return await _create_webhook(g, args)
+        elif name == "send_webhook_message":
+            return await _send_webhook_message(g, args)
+        elif name == "set_slowmode":
+            return await _set_slowmode(g, args)
+        elif name == "set_system_channel":
+            return await _set_system_channel(g, args)
         else:
             raise ValueError(f"Unknown tool: {name}")
     except Exception as e:
@@ -453,7 +575,9 @@ async def _restrict_channel(
     allowed_role_names = args["allowed_role_names"]
     denied_role_names = args.get("denied_role_names", [])
     deny_everyone = args.get("deny_everyone", True)
+    everyone_read_only = args.get("everyone_read_only", False)
     send_messages = args.get("send_messages", True)
+    allow_threads = args.get("allow_threads", True)
 
     channel = discord.utils.get(g.channels, name=channel_name)
     if not channel:
@@ -485,7 +609,7 @@ async def _restrict_channel(
             ]
         denied_roles.append(role)
 
-    overwrites = {}
+    overwrites = dict(channel.overwrites)
 
     if deny_everyone:
         overwrites[g.default_role] = PermissionOverwrite(
@@ -493,16 +617,43 @@ async def _restrict_channel(
             view_channel=False,
             send_messages=False,
             connect=False,
+            create_public_threads=False,
+            create_private_threads=False,
         )
-
-    for role in allowed_roles:
-        overwrites[role] = PermissionOverwrite(
+    elif everyone_read_only:
+        overwrites[g.default_role] = PermissionOverwrite(
             read_messages=True,
             view_channel=True,
-            send_messages=send_messages,
-            connect=send_messages,
-            speak=send_messages,
+            send_messages=False,
+            connect=False,
+            create_public_threads=False,
+            create_private_threads=False,
         )
+    elif g.default_role in overwrites:
+        del overwrites[g.default_role]
+
+    for role in allowed_roles:
+        existing = overwrites.get(role)
+        if existing:
+            overwrites[role] = PermissionOverwrite(
+                read_messages=existing.read_messages if existing.read_messages is not None else True,
+                view_channel=existing.view_channel if existing.view_channel is not None else True,
+                send_messages=send_messages,
+                create_public_threads=allow_threads,
+                create_private_threads=allow_threads,
+                connect=existing.connect if existing.connect is not None else send_messages,
+                speak=existing.speak if existing.speak is not None else send_messages,
+            )
+        else:
+            overwrites[role] = PermissionOverwrite(
+                read_messages=True,
+                view_channel=True,
+                send_messages=send_messages,
+                create_public_threads=allow_threads,
+                create_private_threads=allow_threads,
+                connect=send_messages,
+                speak=send_messages,
+            )
 
     for role in denied_roles:
         overwrites[role] = PermissionOverwrite(
@@ -651,6 +802,16 @@ async def _edit_role(g: discord.Guild, args: dict) -> list[types.TextContent]:
     return [types.TextContent(type="text", text=f"Edited role '{role_name}': {changed}")]
 
 
+async def _rename_channel(g: discord.Guild, args: dict) -> list[types.TextContent]:
+    name = args["name"]
+    new_name = args["new_name"]
+    channel = discord.utils.get(g.channels, name=name)
+    if not channel:
+        return [types.TextContent(type="text", text=f"Channel '{name}' not found")]
+    await channel.edit(name=new_name, reason="Renamed via MCP")
+    return [types.TextContent(type="text", text=f"Renamed '{name}' to '{new_name}'")]
+
+
 async def _delete_category(g: discord.Guild, args: dict) -> list[types.TextContent]:
     name = args["name"]
     cat = discord.utils.get(g.categories, name=name)
@@ -682,6 +843,76 @@ async def _delete_role(g: discord.Guild, args: dict) -> list[types.TextContent]:
         return [types.TextContent(type="text", text=f"Role '{role_name}' is at or above the bot's highest role and cannot be deleted")]
     await role.delete()
     return [types.TextContent(type="text", text=f"Deleted role '{role_name}'")]
+
+
+async def _list_channels(g: discord.Guild, args: dict) -> list[types.TextContent]:
+    lines = []
+    for cat in g.categories:
+        lines.append(f"[{cat.name}] (category, ID: {cat.id})")
+        for ch in cat.channels:
+            ctype = "text" if isinstance(ch, discord.TextChannel) else "voice"
+            lines.append(f"  - {ch.name} ({ctype}, ID: {ch.id})")
+    for ch in g.channels:
+        if ch.category is None and not isinstance(ch, discord.CategoryChannel):
+            ctype = "text" if isinstance(ch, discord.TextChannel) else "voice"
+            lines.append(f"- {ch.name} ({ctype}, ID: {ch.id})")
+    if not lines:
+        return [types.TextContent(type="text", text="No channels found")]
+    return [types.TextContent(type="text", text="\n".join(lines))]
+
+
+async def _list_roles(g: discord.Guild, args: dict) -> list[types.TextContent]:
+    lines = []
+    for role in sorted(g.roles, key=lambda r: r.position, reverse=True):
+        member_count = len(role.members)
+        color_str = str(role.colour) if role.colour.value else "default"
+        managed_str = " [managed]" if role.managed else ""
+        lines.append(f"{role.name} (ID: {role.id}, color: {color_str}, members: {member_count}){managed_str}")
+    if not lines:
+        return [types.TextContent(type="text", text="No roles found")]
+    return [types.TextContent(type="text", text="\n".join(lines))]
+
+
+async def _create_webhook(g: discord.Guild, args: dict) -> list[types.TextContent]:
+    channel_name = args["channel_name"]
+    name = args.get("name", channel_name)
+    channel = discord.utils.get(g.text_channels, name=channel_name)
+    if not channel:
+        return [types.TextContent(type="text", text=f"Channel '{channel_name}' not found")]
+    webhook = await channel.create_webhook(name=name, reason="Created via MCP")
+    return [
+        types.TextContent(
+            type="text",
+            text=f"Created webhook '{webhook.name}' in '{channel_name}' (URL: {webhook.url})",
+        )
+    ]
+
+
+async def _send_webhook_message(g: discord.Guild, args: dict) -> list[types.TextContent]:
+    webhook_url = args["webhook_url"]
+    content = args["content"]
+    webhook = discord.SyncWebhook.from_url(webhook_url)
+    webhook.send(content=content)
+    return [types.TextContent(type="text", text=f"Message sent via webhook")]
+
+
+async def _set_slowmode(g: discord.Guild, args: dict) -> list[types.TextContent]:
+    channel_name = args["channel_name"]
+    seconds = args["seconds"]
+    channel = discord.utils.get(g.text_channels, name=channel_name)
+    if not channel:
+        return [types.TextContent(type="text", text=f"Channel '{channel_name}' not found")]
+    await channel.edit(slowmode_delay=seconds, reason="Set via MCP")
+    return [types.TextContent(type="text", text=f"Set slowmode on '{channel_name}' to {seconds}s")]
+
+
+async def _set_system_channel(g: discord.Guild, args: dict) -> list[types.TextContent]:
+    channel_name = args["channel_name"]
+    channel = discord.utils.get(g.text_channels, name=channel_name)
+    if not channel:
+        return [types.TextContent(type="text", text=f"Channel '{channel_name}' not found")]
+    await g.edit(system_channel=channel, reason="Set via MCP")
+    return [types.TextContent(type="text", text=f"Set system channel to '{channel_name}' (welcome messages and boosts will post here)")]
 
 
 async def _assign_role(g: discord.Guild, args: dict) -> list[types.TextContent]:
