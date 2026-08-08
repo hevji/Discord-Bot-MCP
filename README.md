@@ -13,10 +13,16 @@ Manage a Discord server directly from your AI coding assistant. Create channels,
 | `delete_role` | Delete a role (non-managed, below bot's hierarchy) |
 | `assign_role` | Assign a role to a member by username |
 | `remove_role` | Remove a role from a member by username |
-| `restrict_channel` | Set channel permissions (allow/deny roles, read-only mode) |
+| `restrict_channel` | Set channel permissions (allow/deny roles, read-only mode, thread control) |
 | `create_role_restricted_channel` | Create a channel + restrict it in one call |
+| `rename_channel` | Rename a text or voice channel |
 | `delete_category` | Delete a category channel |
 | `delete_channel` | Delete a text or voice channel |
+| `list_channels` | List all channels with their names, types, and categories |
+| `list_roles` | List all roles with their names, colors, and member counts |
+| `create_webhook` | Create a webhook in a text channel |
+| `send_webhook_message` | Send a message through an existing webhook |
+| `set_slowmode` | Set the slowmode delay (seconds) on a text channel |
 
 ## Setup
 
@@ -44,6 +50,12 @@ Edit `.env` and paste your bot token:
 
 ```
 DISCORD_TOKEN=your_token_here
+```
+
+Optional: pin the bot to a specific server by name (defaults to `Monolith`). All tools operate on this guild only:
+
+```
+DISCORD_GUILD_NAME=Monolith
 ```
 
 ### 3. Install dependencies
